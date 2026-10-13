@@ -10,6 +10,7 @@ Tiny LLM benchmarks: each bite in `bites/` is a YAML file (prompt, cases, expect
 ## Commands
 
 - `npm test && npm run typecheck`: run both before committing.
+- `npm test` also loads every bite in `bites/` and checks its files exist: use it to validate a new bite without spending tokens.
 - `node tb.ts <bite>`: a real run. It spends tokens, so don't run it unless asked.
 
 ## Rules

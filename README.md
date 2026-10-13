@@ -57,6 +57,15 @@ The `±` in the table is the standard deviation **across repeats**, so it only s
 
 Other columns: `invalid_json` (% of responses that couldn't be parsed), `off_label` (% that answered a class outside `labels`), `errors` (calls that failed after 3 attempts).
 
+## Creating a bite with a coding agent
+
+Open the repo in your agent (Claude Code, Codex, Cursor…) and ask for it, e.g.:
+
+> Create a bite in `bites/<name>.yaml` that measures <task>. Follow the bite format in README.md and the rules in CLAUDE.md, and put any files it needs in `data/<name>/`. Propose the questions and the answer format, but ask me for every expected value instead of filling them in from your own reading. When it's done, run `npm test` to check that it loads.
+
+Then read the YAML, check every expected value yourself, and run `node tb.ts <name>`.
+The expected values are what make a bite trustworthy: if a model wrote them, the bite measures agreement with that model, not correctness.
+
 ## Provider
 
 Any OpenAI Chat Completions–compatible endpoint. Defaults to OpenAI with `OPENAI_API_KEY`.
