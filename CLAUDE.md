@@ -18,6 +18,7 @@ Tiny LLM benchmarks: each bite in `bites/` is a YAML file (prompt, cases, expect
 - Everything in the repo is in English: code, comments, output, docs, commit messages and bite content.
 - Expected values come from a human who checked them. Never fill them in from a model's own reading of a photo or document, yours included: the benchmark would then measure agreement with that model.
 - Each question must have exactly one correct answer. Spell out the edge rules in the question (e.g. how to count a product cut off at the edge, or a bag placed backwards).
+- Point at things by what they are, not where they are: "the shelf with the blue Magistral bottles", not "the third shelf from the top". Positions change with perspective.
 - Keep it minimal: no new dependencies or abstractions without a concrete need.
 
 ## Creating a bite
