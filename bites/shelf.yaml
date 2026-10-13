@@ -1,6 +1,6 @@
 # Count facings and detect gaps in supermarket shelf photos (an Argentine supermarket).
 # The expected values were verified by hand.
-models: [gpt-4.1, gpt-5.6-luna, gpt-5.6-sol]
+models: [gpt-6-astra, gpt-6.1-sol, gpt-6-luna, gpt-4.1]
 
 prompt: |
   Look at this photo of a supermarket shelf and answer the question.
