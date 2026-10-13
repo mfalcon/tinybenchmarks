@@ -1,0 +1,101 @@
+# Diagnose negotiation competencies from a transcript ("The Used Car", Lewicki).
+# Source: a previous project (negobench). Synthetic transcripts (scripted, no LLM).
+# expected = blind labels from an expert evaluator, matching the implanted profile 15/15.
+# The evaluator labeled the original Spanish transcripts; these are faithful translations.
+# The competency definitions are the same ones the evaluator got, so model and human are on equal footing.
+models: [gpt-4.1, gpt-5.6-luna, gpt-5.6-sol]
+
+prompt: |
+  You are a negotiation instructor. A student did "The Used Car" role-play (Lewicki) as the SELLER.
+  The buyer is a standardized character. You have the car's fact sheet (both sides knew it),
+  the student's confidential information, and the transcript.
+
+  CAR FACT SHEET:
+  - 1994 Ford Escort two-door hatchback, four-cylinder, automatic transmission, power steering, air conditioning, front-wheel drive
+  - White with red interior, power door locks, power sunroof, AM/FM radio
+  - Mileage 30,450 miles; steel-belted radial tires expected to last another 30,000 miles
+  - Fuel economy 30 mpg city, 38 mpg highway; regular (87 octane) gasoline
+  - No rust; dent on passenger door barely noticeable
+  - Mechanically perfect except exhaust system, which may or may not last another 10,000 miles (costs $300 to replace)
+  - Blue book (1997) values: retail $6,600; trade-in $5,125; loan $4,625
+  - Car has been locally owned and driven
+
+  SELLER'S CONFIDENTIAL INFORMATION:
+  You have agreed to buy a new Chrysler from a dealer. The down payment on the new car is $4,700, with steep monthly payments. You are low on ready cash, so if you can't come up with the down payment by selling your old Escort you will have to borrow it at prime plus 5% interest. You are supposed to pick up the Chrysler first thing tomorrow morning, so you want to sell the Escort today. You advertised the Escort (which is in particularly good condition) in the newspaper, and have had several calls. Your only really good prospect right now is the person with whom you are about to bargain — a stranger. You don't have to sell to this person, but if you don't sell the Escort right away, you will have to pay high interest (on the Chrysler down payment) until you do. The Chrysler dealer will only give you $4,400 for the Escort (as a trade-in), since it will have to be resold to a Ford dealer. The local Ford dealer is not anxious to buy the car from you since a large shipment of new cars has just arrived; in any case, you probably would not receive more than $4,400.
+
+  COMPETENCIES (mark yes or no based on what the seller DID in the transcript, not on what they claim to be):
+  - strong_anchor: opens with a high ask in their favor, above the guide's retail value ($6,600).
+  - respects_floor: never closes below their $4,400 alternative, not even under pressure.
+  - probes: asks questions to learn the buyer's situation, urgency or alternatives.
+  - controlled_concessions: concedes in decreasing steps; doesn't "split the difference" right away or make big jumps.
+  - uses_references: justifies their prices with objective data (the guide, the repair cost, the comparison with the alternative).
+
+  TRANSCRIPT:
+  {{transcript}}
+
+  Answer only JSON:
+  {"strong_anchor": "yes"|"no", "respects_floor": "yes"|"no", "probes": "yes"|"no", "controlled_concessions": "yes"|"no", "uses_references": "yes"|"no"}
+
+# Only for validation: answers like "partially" count as wrong and show up in off_label.
+labels: {"yes": "showed the competency", "no": "did not show it"}
+
+metrics:
+  strong_anchor: exact
+  respects_floor: exact
+  probes: exact
+  controlled_concessions: exact
+  uses_references: exact
+
+cases:
+  # T1 (seller-03): closes at $4500. Gray areas per the evaluator: concessions "no / partially"
+  # (decreasing at the end, but it starts by splitting the difference); citing the $4,400 is the BATNA, not an objective reference.
+  - transcript: |
+      BUYER: Hi, I'm here about the Escort from the ad. Is it still available?
+      SELLER: Yes. I'm selling it for $5350. It's a good car, you won't regret it.
+      BUYER: Ugh, that seems like a lot. I was thinking $3800 — there's a '92 Cavalier going around at that price.
+      SELLER: OK, I hear you: what if we split the difference? I'll let it go for $4600.
+      BUYER: Still too high for me. I can go up to $4100.
+      SELLER: Fine, $4500 and that's that.
+      BUYER: Look, I'll be honest: $4300 is my final offer. Take it or leave it — the Cavalier is one phone call away.
+      SELLER: Look, tomorrow I can trade it in at the dealer for $4,400 and be done with it — anything less than that makes no sense for me. I can have the paperwork sorted out today for $4500.
+      BUYER: All right, I can see you're not going to give the car away. But it's still more than I had in mind.
+      SELLER: I won't move from there: $4500 is the minimum.
+      BUYER: OK, let's close at $4500 and that's that.
+      SELLER: Deal. Fair for both of us.
+    expected: {strong_anchor: "no", respects_floor: "yes", probes: "no", controlled_concessions: "no", uses_references: "no"}
+
+  # T2 (seller-01): closes at $4650. All five competencies. Evaluator's nuance: concessions
+  # decrease, but not all of them get something in return.
+  - transcript: |
+      BUYER: Hi, I'm here about the Escort from the ad. Is it still available?
+      SELLER: Yes, it's in perfect shape. I'm asking $6950. Note that the blue book puts it at $6,600 retail, it only has 30,450 miles and a sunroof; the only future cost is the exhaust, which is $300 at most.
+      BUYER: Ugh, that seems like a lot. I was thinking $3800 — there's a '92 Cavalier going around at that price.
+      SELLER: And why are you looking for a car right now? Are you in a hurry, do you have other options besides the Cavalier?
+      BUYER: My car was stolen two weeks ago and I'm renting one for work, so I can't stretch this out much longer.
+      SELLER: Right, and a rental bleeds you dry every day. Against that, this one is ready to go: mechanically perfect except for the exhaust. Compare it with a high-mileage Cavalier that burns more gas.
+      SELLER: I can go down to $6050. Note that the guide puts it at $6,600 retail and this one has only 30,450 miles; I'm already giving you quite a discount.
+      BUYER: Still too high for me. I can go up to $4100.
+      SELLER: I'll drop to $5450, but keep in mind that not even the trade-in value is below $5,125 according to the guide.
+      BUYER: Look, I'll be honest: $4300 is my final offer. Take it or leave it — the Cavalier is one phone call away.
+      SELLER: Look, tomorrow I can trade it in at the dealer for $4,400 and be done with it — anything less than that makes no sense for me. I can have the paperwork sorted out today for $5450.
+      BUYER: All right, I can see you're not going to give the car away. But it's still more than I had in mind.
+      SELLER: I'll let it go for $5050. I'm already discounting the exhaust: it's $300 at most, and the rest of the car is in perfect shape.
+      BUYER: Still too high for me. I can go up to $4450.
+      SELLER: I can go to $4800. Compared with a high-mileage '92 Cavalier, this one saves you gas every month; that's money too.
+      BUYER: Still too high for me. I can go up to $4600.
+      SELLER: $4650 and we close today; we can sort out the paperwork right now.
+      BUYER: OK, $4650 works for me. Deal.
+    expected: {strong_anchor: "yes", respects_floor: "yes", probes: "yes", controlled_concessions: "yes", uses_references: "yes"}
+
+  # T3 (seller-02): closes at $4300, below its BATNA. respects_floor is judged with the confidential
+  # context (the dialogue never mentions the $4,400). Gray area: uses references, but drops them under pressure.
+  - transcript: |
+      BUYER: Hi, I'm here about the Escort from the ad. Is it still available?
+      SELLER: Yes, it's in perfect shape. I'm asking $6850. Note that the blue book puts it at $6,600 retail, it only has 30,450 miles and a sunroof; the only future cost is the exhaust, which is $300 at most.
+      BUYER: Ugh, that seems like a lot. I was thinking $3800 — there's a '92 Cavalier going around at that price.
+      SELLER: OK, I hear you: what if we split the difference? I'll let it go for $5350.
+      BUYER: Still too high for me. I can go up to $4100.
+      SELLER: I'll drop to $4850, but keep in mind that not even the trade-in value is below $5,125 according to the guide.
+      BUYER: Look, I'll be honest: $4300 is my final offer. Take it or leave it — the Cavalier is one phone call away.
+      SELLER: Well... all right, I don't want to lose the sale. Fine, $4300 and it's yours.
+    expected: {strong_anchor: "yes", respects_floor: "no", probes: "no", controlled_concessions: "no", uses_references: "yes"}

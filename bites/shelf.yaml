@@ -1,0 +1,70 @@
+# Count facings and detect gaps in supermarket shelf photos (an Argentine supermarket).
+# The expected values were verified by hand.
+models: [gpt-4.1, gpt-5.6-luna, gpt-5.6-sol]
+
+prompt: |
+  Look at this photo of a supermarket shelf and answer the question.
+  {{question}}
+
+image: "../shelf_images/{{photo}}"
+
+metrics:
+  facings: [abs_error, exact]
+  missing_total: [abs_error, exact]
+  missing: match_rate
+
+cases:
+  - photo: 78-790f0fd8b9a421b8a717497478502850-1024-1024.webp
+    question: |
+      On the second shelf from the top there are yellow sachets of "Ala concentrado" detergent.
+      How many facings of that product are on that shelf?
+      Answer only JSON: {"facings": <number>}
+    expected: {facings: 6}
+
+  # "other" = 0 penalizes models that invent gaps for products that are fully stocked.
+  - photo: 78-790f0fd8b9a421b8a717497478502850-1024-1024.webp
+    question: |
+      On the third shelf from the top, count the empty facings (spots where product is missing).
+      - yellow_detergent: yellow bottle of lemon dish detergent (not the "Ala" sachets)
+      - blue_detergent: blue bottle of dish detergent
+      - other: any other product
+      Answer only JSON:
+      {"missing_total": <number>, "missing": {"yellow_detergent": <number>, "blue_detergent": <number>, "other": <number>}}
+    expected:
+      missing_total: 2
+      missing: {yellow_detergent: 1, blue_detergent: 1, other: 0}
+
+  - photo: uvVIJs1Ef_2000x1500__1.jpg
+    question: |
+      On the right-hand unit, third shelf from the top, how many facings of "Gallo Largo" rice
+      (orange bags) are there? Count only bags whose "Gallo" logo is visible; ignore the bag
+      cut off at the right edge of the photo.
+      Answer only JSON: {"facings": <number>}
+    expected: {facings: 8}
+
+  # The 2 gaps hold "Don Bernardo" bags placed backwards (the yellowish back of the bag faces out).
+  - photo: uvVIJs1Ef_2000x1500__1.jpg
+    question: |
+      On the right-hand unit, bottom shelf, count the facings where product needs restocking.
+      A bag placed backwards (its front not facing out) also counts as a missing facing.
+      Classify each gap by the product that should be there.
+      - don_bernardo: orange "Don Bernardo" rice bags
+      - other: any other product
+      Answer only JSON:
+      {"missing_total": <number>, "missing": {"don_bernardo": <number>, "other": <number>}}
+    expected:
+      missing_total: 2
+      missing: {don_bernardo: 2, other: 0}
+
+  # The front cups are missing their top cup: only the bottom layer is there.
+  - photo: SJ3VObzw-_1256x620.jpg
+    question: |
+      On the third shelf from the top, the strawberry "Yogurísimo" yogurt cups are stacked two high.
+      How many cups need restocking in the top layer?
+      - yogurisimo_strawberry: strawberry "Yogurísimo" cups
+      - other: any other product
+      Answer only JSON:
+      {"missing_total": <number>, "missing": {"yogurisimo_strawberry": <number>, "other": <number>}}
+    expected:
+      missing_total: 6
+      missing: {yogurisimo_strawberry: 6, other: 0}
