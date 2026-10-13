@@ -25,10 +25,10 @@ cases:
   # The shelf is named by its products: counting shelves "from the top" is ambiguous in this perspective.
   - photo: 78-790f0fd8b9a421b8a717497478502850-1024-1024.webp
     question: |
-      On the shelf with the large yellow "Ala" bottles and the blue "Magistral" bottles,
+      On the shelf with the large yellow "Limzul" bottles at the left end and the blue "Magistral" bottles,
       count the empty facings (spots where product is missing).
-      - yellow_detergent: large yellow "Ala" dish detergent bottle
-      - blue_detergent: blue "Magistral" dish detergent bottle
+      - yellow_detergent: large yellow "Limzul" bottle (lemon)
+      - blue_detergent: blue "Magistral" bottle
       - other: any other product
       Answer only JSON:
       {"missing_total": <number>, "missing": {"yellow_detergent": <number>, "blue_detergent": <number>, "other": <number>}}
