@@ -111,3 +111,21 @@ test("the repo's bites load and their images exist", () => {
     for (const c of bite.cases) buildPrompt(bite, c.vars);
   }
 });
+
+test("runBite runs up to `concurrency` calls at once and keeps row order", async () => {
+  const bite = loadBite(biteFile(CLASSIFY));
+  let inFlight = 0;
+  let maxInFlight = 0;
+  const slow = async (model: string, prompt: Prompt) => {
+    maxInFlight = Math.max(maxInFlight, ++inFlight);
+    // the first model is the slowest, so its calls finish last
+    await new Promise((r) => setTimeout(r, model === "a" ? 30 : 5));
+    inFlight--;
+    return { text: prompt.text.includes("woof") ? '{"label": "dog"}' : '{"label": "cat"}' };
+  };
+  const done: string[] = [];
+  const rows = await runBite(bite, ["a", "b", "c"], 2, slow, (r) => done.push(r.model), 3);
+  assert.equal(maxInFlight, 3);
+  assert.notDeepEqual(done, rows.map((r) => r.model)); // completion order differs...
+  assert.deepEqual(rows.map((r) => `${r.model}${r.repeat}${r.case}`), ["a01", "a02", "a11", "a12", "b01", "b02", "b11", "b12", "c01", "c02", "c11", "c12"]); // ...but rows don't
+});

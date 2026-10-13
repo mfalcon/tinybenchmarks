@@ -19,6 +19,7 @@ Output: per-call progress and one table row per model. Plus, in `runs/`:
 - `<bite>-<date>.jsonl`: the same, one line per call, plus `usage` (tokens) and `finish_reason`, for processing.
 
 Both are written as responses arrive, so nothing is lost if a run is interrupted.
+Calls run concurrently, up to 8 at a time (`--concurrency n` to change it); failed calls with 429 or 5xx are retried.
 Responses are cached in `.cache/` (key: model + message + repeat number), so re-running is free.
 To force fresh calls, delete `.cache/` or raise `--repeats` (each new repeat is a new call).
 

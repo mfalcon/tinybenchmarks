@@ -1,4 +1,4 @@
-// CLI: node tb.ts <bite> [--models a,b] [--repeats n]
+// CLI: node tb.ts <bite> [--models a,b] [--repeats n] [--concurrency n]
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
@@ -63,28 +63,32 @@ export const chat: ChatFn = async (model, prompt, repeat) => {
   }
 };
 
-export async function runBite(bite: Bite, models: string[], repeats: number, chatFn: ChatFn, onRow?: (r: Row) => void): Promise<Row[]> {
+// Runs up to `concurrency` calls at a time. onRow fires in completion order; the returned rows
+// keep the model → repeat → case order regardless of which call finished first.
+export async function runBite(bite: Bite, models: string[], repeats: number, chatFn: ChatFn, onRow?: (r: Row) => void, concurrency = 8): Promise<Row[]> {
   const prompts = bite.cases.map((c) => buildPrompt(bite, c.vars)); // fails before spending tokens if an image is missing
-  const rows: Row[] = [];
-  for (const model of models) {
-    for (let repeat = 0; repeat < repeats; repeat++) {
-      for (const [i, c] of bite.cases.entries()) {
-        const p = prompts[i];
-        const base = { model, case: i + 1, repeat, prompt: p.text, image: p.image && relative(ROOT, p.image), expected: c.expected };
-        const t0 = Date.now();
-        let row: Row;
-        try {
-          const reply = await chatFn(model, p, repeat);
-          const parsed = parseJson(reply.text);
-          row = { ...base, output: reply.text, finish_reason: reply.finish_reason, usage: reply.usage, parsed, json_ok: parsed !== null, ...scoreCase(bite, c, parsed), ms: Date.now() - t0 };
-        } catch (e) {
-          row = { ...base, metrics: {}, error: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 };
-        }
-        rows.push(row);
-        onRow?.(row);
+  const tasks = models.flatMap((model) => Array.from({ length: repeats }, (_, repeat) => bite.cases.map((c, i) => ({ model, repeat, c, i }))).flat());
+  const rows: Row[] = new Array(tasks.length);
+  let next = 0;
+
+  async function worker() {
+    while (next < tasks.length) {
+      const t = next++;
+      const { model, repeat, c, i } = tasks[t];
+      const p = prompts[i];
+      const base = { model, case: i + 1, repeat, prompt: p.text, image: p.image && relative(ROOT, p.image), expected: c.expected };
+      const t0 = Date.now();
+      try {
+        const reply = await chatFn(model, p, repeat);
+        const parsed = parseJson(reply.text);
+        rows[t] = { ...base, output: reply.text, finish_reason: reply.finish_reason, usage: reply.usage, parsed, json_ok: parsed !== null, ...scoreCase(bite, c, parsed), ms: Date.now() - t0 };
+      } catch (e) {
+        rows[t] = { ...base, metrics: {}, error: e instanceof Error ? e.message : String(e), ms: Date.now() - t0 };
       }
+      onRow?.(rows[t]);
     }
   }
+  await Promise.all(Array.from({ length: Math.min(concurrency, tasks.length) }, worker));
   return rows;
 }
 
@@ -96,14 +100,16 @@ function resolveBitePath(arg: string): string {
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { models: { type: "string" }, repeats: { type: "string", default: "1" } },
+    options: { models: { type: "string" }, repeats: { type: "string", default: "1" }, concurrency: { type: "string", default: "8" } },
   });
-  if (positionals.length !== 1) throw new Error("usage: node tb.ts <bite> [--models a,b] [--repeats n]");
+  if (positionals.length !== 1) throw new Error("usage: node tb.ts <bite> [--models a,b] [--repeats n] [--concurrency n]");
   const bite = loadBite(resolveBitePath(positionals[0]));
   const models = values.models ? values.models.split(",").map((m) => m.trim()) : bite.models;
   const repeats = Number(values.repeats);
+  const concurrency = Number(values.concurrency);
   if (models.length === 0) throw new Error("no models: set 'models' in the YAML or pass --models");
   if (!Number.isInteger(repeats) || repeats < 1) throw new Error("--repeats must be an integer ≥ 1");
+  if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be an integer ≥ 1");
   if (!API_KEY) throw new Error("missing OPENAI_API_KEY (or TB_API_KEY)");
 
   // .jsonl to process, .md to read: both are written as responses arrive.
@@ -118,7 +124,7 @@ async function main() {
     appendFileSync(`${stem}.md`, transcriptEntry(r));
     const status = r.error ? `ERROR ${r.error}` : !r.json_ok ? "invalid JSON" : Object.entries(r.metrics).map(([k, v]) => `${k}=${v}`).join(" ");
     console.error(`[${++done}/${total}] ${r.model} repeat ${r.repeat + 1} case ${r.case}  ${(r.ms / 1000).toFixed(1)}s  ${status}`);
-  });
+  }, concurrency);
 
   console.log(`\n${bite.name} — ${bite.cases.length} cases × ${repeats} repeats\n`);
   console.log(summarize(bite, rows));
