@@ -4,6 +4,7 @@ Tiny LLM benchmarks: each bite in `bites/` is a YAML file (prompt, cases, expect
 
 - `lib.ts`: pure logic (loading and validating bites, templates, JSON parsing, metrics, reports). No network.
 - `tb.ts`: CLI, the OpenAI-compatible client (cache in `.cache/`, retries, timeout) and the concurrent runner.
+- `data/<bite>/`: files a bite references (e.g. photos); paths in the YAML are relative to `bites/`.
 - `test/lib.test.ts`: uses a fake model. Tests must never call a real API.
 
 ## Commands

@@ -6,7 +6,7 @@ prompt: |
   Look at this photo of a supermarket shelf and answer the question.
   {{question}}
 
-image: "../shelf_images/{{photo}}"
+image: "../data/shelf/{{photo}}"
 
 metrics:
   facings: [abs_error, exact]

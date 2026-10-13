@@ -65,7 +65,7 @@ Each attempt times out after 180 s (`TB_TIMEOUT=<seconds>` to change it) and is 
 
 ## Included bites
 
-- `shelf`: count facings and gaps in `shelf_images/` (cases verified by hand).
+- `shelf`: count facings and gaps in `data/shelf/` (cases verified by hand).
 - `negotiation`: diagnose 5 competencies of a seller in "The Used Car" (Lewicki), against an expert evaluator's blind labels.
 
 ## License
