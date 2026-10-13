@@ -19,7 +19,7 @@ Output: per-call progress and one table row per model. Plus, in `runs/`:
 - `<bite>-<date>.jsonl`: the same, one line per call, plus `usage` (tokens) and `finish_reason`, for processing.
 
 Both are written as responses arrive, so nothing is lost if a run is interrupted.
-Calls run concurrently, up to 8 at a time (`--concurrency n` to change it); failed calls with 429 or 5xx are retried.
+Calls run concurrently, up to 8 at a time (`--concurrency n` to change it). Network errors, timeouts, malformed responses, 429 and 5xx are retried up to 3 times.
 Responses are cached in `.cache/` (key: model + message + repeat number), so re-running is free.
 To force fresh calls, delete `.cache/` or raise `--repeats` (each new repeat is a new call).
 
@@ -50,7 +50,9 @@ The model's response is always parsed as JSON (tolerating ```` ```json ```` fenc
 | `abs_error` | absolute difference between numbers (↓ is better) |
 | `match_rate` | share of an object's keys that match with `exact` |
 
-If the JSON is invalid or the field is missing, `exact` and `match_rate` count as 0 and `abs_error` stays empty.
+If the JSON is invalid or the field is missing, `exact` and `match_rate` count as 0 and `abs_error` has no value.
+Those are left out of the `abs_error` mean and counted next to it, e.g. `1.20 (2 unscored)`, so a model that dodges the hard cases doesn't look better.
+Expected values are type-checked when the bite loads (`abs_error` needs a number, `match_rate` an object), so a typo fails before spending tokens.
 The `±` in the table is the standard deviation **across repeats**, so it only shows up with `--repeats` > 1.
 
 Other columns: `invalid_json` (% of responses that couldn't be parsed), `off_label` (% that answered a class outside `labels`), `errors` (calls that failed after 3 attempts).

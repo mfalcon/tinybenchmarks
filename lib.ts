@@ -43,7 +43,7 @@ const VAR_RE = /\{\{\s*(\w+)\s*\}\}/g;
 
 export function render(tpl: string, vars: Record<string, unknown>): string {
   return tpl.replace(VAR_RE, (_, name: string) => {
-    if (!(name in vars)) throw new Error(`missing variable {{${name}}}`);
+    if (!Object.hasOwn(vars, name)) throw new Error(`missing variable {{${name}}}`);
     return String(vars[name]);
   });
 }
@@ -64,6 +64,7 @@ export function loadBite(path: string): Bite {
   if (typeof raw.prompt !== "string") fail("missing 'prompt'");
   if (!raw.metrics) fail("missing 'metrics'");
   if (!Array.isArray(raw.cases) || raw.cases.length === 0) fail("missing 'cases' (non-empty list)");
+  if (raw.models !== undefined && !(Array.isArray(raw.models) && raw.models.every((m: unknown) => typeof m === "string"))) fail("'models' must be a list, e.g. [gpt-4.1]");
 
   const metrics: Record<string, MetricType[]> = {};
   for (const [field, spec] of Object.entries(raw.metrics)) {
@@ -79,9 +80,10 @@ export function loadBite(path: string): Bite {
     if (!expected) fail(`${where}: missing 'expected'`);
     for (const [field, value] of Object.entries(expected)) {
       if (!metrics[field]) fail(`${where}: 'expected.${field}' has no metric in 'metrics'`);
+      for (const t of metrics[field]) if (!EXPECTED_OK[t](value)) fail(`${where}: 'expected.${field}' must be ${EXPECTED_DESC[t]} for ${t} (got ${JSON.stringify(value)})`);
       if (labelSet && metrics[field].includes("exact") && !labelSet.has(normalize(value))) fail(`${where}: '${value}' is not in 'labels'`);
     }
-    for (const v of templateVars) if (!(v in vars) && !(v === "labels" && labelSet)) fail(`${where}: missing variable {{${v}}}`);
+    for (const v of templateVars) if (!Object.hasOwn(vars, v) && !(v === "labels" && labelSet)) fail(`${where}: missing variable {{${v}}}`);
     return { vars, expected };
   });
 
@@ -119,17 +121,22 @@ export function normalize(v: unknown): string {
   return String(v).normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
 
+const isScalar = (v: unknown) => typeof v === "string" || typeof v === "number" || typeof v === "boolean";
+
+// Only scalars are compared: objects or arrays never match (String() would turn any two into "[object Object]").
 export function exact(actual: unknown, expected: unknown): number {
-  return actual != null && normalize(actual) === normalize(expected) ? 1 : 0;
+  return isScalar(actual) && isScalar(expected) && normalize(actual) === normalize(expected) ? 1 : 0;
 }
 
+// Accepts numbers and numeric strings ("7"); anything else (missing, "many", true, []) is null: no number to compare.
 export function absError(actual: unknown, expected: unknown): number | null {
-  if (actual == null || actual === "") return null;
-  const d = Math.abs(Number(actual) - Number(expected));
+  const n = typeof actual === "number" ? actual : typeof actual === "string" && actual.trim() !== "" ? Number(actual) : NaN;
+  const d = Math.abs(n - Number(expected));
   return Number.isFinite(d) ? d : null;
 }
 
 export function matchRate(actual: unknown, expected: unknown): number {
+  if (!expected || typeof expected !== "object") return 0;
   const exp = expected as Record<string, unknown>;
   const keys = Object.keys(exp);
   if (keys.length === 0 || !actual || typeof actual !== "object") return 0;
@@ -142,6 +149,14 @@ const METRICS: Record<MetricType, (actual: unknown, expected: unknown) => number
   abs_error: absError,
   match_rate: matchRate,
 };
+
+// What each metric accepts as an expected value; checked when loading, before spending tokens.
+const EXPECTED_OK: Record<MetricType, (v: unknown) => boolean> = {
+  exact: isScalar,
+  abs_error: (v) => typeof v === "number" && Number.isFinite(v),
+  match_rate: (v) => !!v && typeof v === "object" && !Array.isArray(v) && Object.keys(v).length > 0 && Object.values(v).every(isScalar),
+};
+const EXPECTED_DESC: Record<MetricType, string> = { exact: "a string, number or boolean", abs_error: "a number", match_rate: "an object of strings/numbers" };
 
 // Column name: "field" if it has a single metric, "field.type" if it has several.
 export function columns(bite: Bite): Column[] {
@@ -184,14 +199,16 @@ export function summarize(bite: Bite, rows: Row[]): string {
     const line = [model];
     for (const col of cols) {
       const byRepeat = new Map<number, number[]>();
+      let unscored = 0; // abs_error is null when there's no number; averaging without them would reward skipping hard cases
       for (const r of ok) {
         const v = r.metrics[col.name];
         if (typeof v === "number") byRepeat.set(r.repeat, [...(byRepeat.get(r.repeat) ?? []), v]);
+        else if (col.name in r.metrics) unscored++;
       }
       const means = [...byRepeat.values()].map(mean);
-      if (means.length === 0) line.push("—");
-      else if (means.length === 1) line.push(means[0].toFixed(2));
-      else line.push(`${mean(means).toFixed(2)} ± ${std(means).toFixed(2)}`);
+      let cell = means.length === 0 ? "—" : means.length === 1 ? means[0].toFixed(2) : `${mean(means).toFixed(2)} ± ${std(means).toFixed(2)}`;
+      if (unscored) cell += ` (${unscored} unscored)`;
+      line.push(cell);
     }
     line.push(pct(ok.filter((r) => !r.json_ok).length, ok.length));
     if (bite.labelSet) line.push(pct(ok.filter((r) => r.off_label).length, ok.length));

@@ -129,3 +129,40 @@ test("runBite runs up to `concurrency` calls at once and keeps row order", async
   assert.notDeepEqual(done, rows.map((r) => r.model)); // completion order differs...
   assert.deepEqual(rows.map((r) => `${r.model}${r.repeat}${r.case}`), ["a01", "a02", "a11", "a12", "b01", "b02", "b11", "b12", "c01", "c02", "c11", "c12"]); // ...but rows don't
 });
+
+test("review fixes: render only uses the case's own variables", () => {
+  assert.throws(() => render("{{constructor}}", {}), /missing variable \{\{constructor\}\}/);
+  assert.throws(() => loadBite(biteFile(`prompt: "{{constructor}}"\nmetrics: {n: exact}\ncases:\n  - {expected: {n: 1}}\n`)), /missing variable/);
+});
+
+test("review fixes: exact and match_rate never match objects", () => {
+  assert.equal(exact({ zzz: 99 }, { a: 1 }), 0);
+  assert.equal(exact({ a: 1 }, "[object Object]"), 0);
+  assert.equal(matchRate({ k: { zzz: 99 } }, { k: { a: 1 } }), 0);
+  assert.equal(matchRate({ a: 1 }, null), 0);
+});
+
+test("review fixes: abs_error only scores numbers and numeric strings", () => {
+  for (const v of [true, [], " ", null, {}]) assert.equal(absError(v, 1), null, JSON.stringify(v));
+  assert.equal(absError("7", 6), 1);
+  assert.equal(absError(0, 0), 0);
+});
+
+test("review fixes: loadBite rejects expected values of the wrong type, before any call", () => {
+  const nums = (expected: string) => biteFile(`prompt: "{{q}}"\nmetrics: {n: abs_error, m: match_rate, e: exact}\ncases:\n  - {q: a, expected: ${expected}}\n`);
+  assert.throws(() => loadBite(nums("{n: }")), /'expected.n' must be a number for abs_error/);
+  assert.throws(() => loadBite(nums("{n: six}")), /'expected.n' must be a number/);
+  assert.throws(() => loadBite(nums("{m: }")), /'expected.m' must be an object/);
+  assert.throws(() => loadBite(nums("{m: dog}")), /'expected.m' must be an object/);
+  assert.throws(() => loadBite(nums("{e: {a: 1}}")), /'expected.e' must be a string, number or boolean/);
+  assert.throws(() => loadBite(biteFile(CLASSIFY.replace("models: [m1]", "models: m1"))), /'models' must be a list/);
+});
+
+test("review fixes: the table counts abs_error answers that had no number", async () => {
+  const bite = loadBite(biteFile(`prompt: "{{q}}"\nmetrics: {n: abs_error}\ncases:\n  - {q: easy, expected: {n: 2}}\n  - {q: hard, expected: {n: 9}}\n`));
+  // "skipper" answers the easy case exactly and dodges the hard one
+  const fake = async (model: string, prompt: Prompt) => ({ text: prompt.text === "easy" ? '{"n": 2}' : model === "skipper" ? '{"n": "many"}' : '{"n": 8}' });
+  const table = summarize(bite, await runBite(bite, ["skipper", "tries"], 1, fake)).split("\n");
+  assert.match(table[1], /^skipper\s+0\.00 \(1 unscored\)\s/);
+  assert.match(table[2], /^tries\s+0\.50\s/);
+});

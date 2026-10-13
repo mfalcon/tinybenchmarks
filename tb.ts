@@ -1,6 +1,6 @@
 // CLI: node tb.ts <bite> [--models a,b] [--repeats n] [--concurrency n]
 import { createHash } from "node:crypto";
-import { appendFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { extname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -36,33 +36,57 @@ function messageContent(p: Prompt) {
   ];
 }
 
-// Calls an OpenAI-compatible endpoint, with a disk cache and 3 attempts (only on network errors, 429 or 5xx).
+// Calls an OpenAI-compatible endpoint, with a disk cache and 3 attempts (only on network errors, timeouts,
+// malformed responses, 429 or 5xx). The timeout covers reading the body too.
 // The repeat number is part of the cache key: otherwise all N repeats would return the same response.
 export const chat: ChatFn = async (model, prompt, repeat) => {
   const request = { model, messages: [{ role: "user", content: messageContent(prompt) }] };
   const key = createHash("sha256").update(JSON.stringify({ BASE_URL, body: request, repeat })).digest("hex");
   const file = join(ROOT, ".cache", `${key}.json`);
-  if (existsSync(file)) return JSON.parse(readFileSync(file, "utf8"));
-
-  for (let attempt = 1; ; attempt++) {
-    const res = await fetch(`${BASE_URL}/chat/completions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
-      body: JSON.stringify(request),
-      signal: AbortSignal.timeout(TIMEOUT_S * 1000),
-    }).catch((e: Error) => e);
-    if (!(res instanceof Error) && res.ok) {
-      const data = await res.json();
-      const reply: Reply = { text: data.choices[0].message.content ?? "", finish_reason: data.choices[0].finish_reason, usage: data.usage };
-      mkdirSync(join(ROOT, ".cache"), { recursive: true });
-      writeFileSync(file, JSON.stringify({ model, repeat, ...reply }));
-      return reply;
-    }
-    const failure = res instanceof Error ? (res.name === "TimeoutError" ? `timeout after ${TIMEOUT_S}s` : `network error: ${res.message}`) : `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
-    const retryable = res instanceof Error || res.status === 429 || res.status >= 500;
-    if (!retryable || attempt === 3) throw new Error(failure);
-    await new Promise((r) => setTimeout(r, 2000 * 2 ** (attempt - 1)));
+  if (existsSync(file)) {
+    try {
+      return JSON.parse(readFileSync(file, "utf8"));
+    } catch {} // a broken cache file is ignored and overwritten below
   }
+
+  let failure = "";
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (attempt > 1) await new Promise((r) => setTimeout(r, 2000 * 2 ** (attempt - 2)));
+    let res: Response, body: string;
+    try {
+      res = await fetch(`${BASE_URL}/chat/completions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
+        body: JSON.stringify(request),
+        signal: AbortSignal.timeout(Math.ceil(TIMEOUT_S * 1000)),
+      });
+      body = await res.text();
+    } catch (e) {
+      failure = e instanceof Error && e.name === "TimeoutError" ? `timeout after ${TIMEOUT_S}s` : `network error: ${e instanceof Error ? e.message : e}`;
+      continue;
+    }
+    if (!res.ok) {
+      failure = `HTTP ${res.status}: ${body.slice(0, 300)}`;
+      if (res.status === 429 || res.status >= 500) continue;
+      break;
+    }
+    let data;
+    try {
+      data = JSON.parse(body);
+    } catch {}
+    const choice = data?.choices?.[0];
+    if (!choice?.message) {
+      failure = `malformed response: ${body.slice(0, 300)}`;
+      continue;
+    }
+    const reply: Reply = { text: choice.message.content ?? "", finish_reason: choice.finish_reason, usage: data.usage };
+    // write to a temp file and rename, so an interrupted write never leaves a broken cache entry
+    mkdirSync(join(ROOT, ".cache"), { recursive: true });
+    writeFileSync(`${file}.tmp`, JSON.stringify({ model, repeat, ...reply }));
+    renameSync(`${file}.tmp`, file);
+    return reply;
+  }
+  throw new Error(failure);
 };
 
 // Runs up to `concurrency` calls at a time. onRow fires in completion order; the returned rows
@@ -106,14 +130,14 @@ async function main() {
   });
   if (positionals.length !== 1) throw new Error("usage: node tb.ts <bite> [--models a,b] [--repeats n] [--concurrency n]");
   const bite = loadBite(resolveBitePath(positionals[0]));
-  const models = values.models ? values.models.split(",").map((m) => m.trim()) : bite.models;
+  const models = values.models ? values.models.split(",").map((m) => m.trim()).filter(Boolean) : bite.models;
   const repeats = Number(values.repeats);
   const concurrency = Number(values.concurrency);
   if (models.length === 0) throw new Error("no models: set 'models' in the YAML or pass --models");
   if (!Number.isInteger(repeats) || repeats < 1) throw new Error("--repeats must be an integer ≥ 1");
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be an integer ≥ 1");
   if (!API_KEY) throw new Error("missing OPENAI_API_KEY (or TB_API_KEY)");
-  if (!(TIMEOUT_S > 0)) throw new Error("TB_TIMEOUT must be a number of seconds > 0");
+  if (!Number.isFinite(TIMEOUT_S) || TIMEOUT_S <= 0) throw new Error("TB_TIMEOUT must be a number of seconds > 0");
 
   // .jsonl to process, .md to read: both are written as responses arrive.
   mkdirSync(join(ROOT, "runs"), { recursive: true });
