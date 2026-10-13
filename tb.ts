@@ -9,6 +9,7 @@ import { type Bite, type Row, labelsText, loadBite, parseJson, render, scoreCase
 const ROOT = import.meta.dirname;
 const BASE_URL = process.env.TB_BASE_URL ?? "https://api.openai.com/v1";
 const API_KEY = process.env.TB_API_KEY ?? process.env.OPENAI_API_KEY;
+const TIMEOUT_S = Number(process.env.TB_TIMEOUT ?? 180); // per attempt; a hung call is retried like a network error
 
 const MIME: Record<string, string> = { ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp", ".gif": "image/gif" };
 
@@ -48,6 +49,7 @@ export const chat: ChatFn = async (model, prompt, repeat) => {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${API_KEY}` },
       body: JSON.stringify(request),
+      signal: AbortSignal.timeout(TIMEOUT_S * 1000),
     }).catch((e: Error) => e);
     if (!(res instanceof Error) && res.ok) {
       const data = await res.json();
@@ -56,7 +58,7 @@ export const chat: ChatFn = async (model, prompt, repeat) => {
       writeFileSync(file, JSON.stringify({ model, repeat, ...reply }));
       return reply;
     }
-    const failure = res instanceof Error ? `network error: ${res.message}` : `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
+    const failure = res instanceof Error ? (res.name === "TimeoutError" ? `timeout after ${TIMEOUT_S}s` : `network error: ${res.message}`) : `HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`;
     const retryable = res instanceof Error || res.status === 429 || res.status >= 500;
     if (!retryable || attempt === 3) throw new Error(failure);
     await new Promise((r) => setTimeout(r, 2000 * 2 ** (attempt - 1)));
@@ -111,6 +113,7 @@ async function main() {
   if (!Number.isInteger(repeats) || repeats < 1) throw new Error("--repeats must be an integer ≥ 1");
   if (!Number.isInteger(concurrency) || concurrency < 1) throw new Error("--concurrency must be an integer ≥ 1");
   if (!API_KEY) throw new Error("missing OPENAI_API_KEY (or TB_API_KEY)");
+  if (!(TIMEOUT_S > 0)) throw new Error("TB_TIMEOUT must be a number of seconds > 0");
 
   // .jsonl to process, .md to read: both are written as responses arrive.
   mkdirSync(join(ROOT, "runs"), { recursive: true });

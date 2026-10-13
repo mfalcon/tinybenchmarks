@@ -59,6 +59,7 @@ Other columns: `invalid_json` (% of responses that couldn't be parsed), `off_lab
 
 Any OpenAI Chat Completions–compatible endpoint. Defaults to OpenAI with `OPENAI_API_KEY`.
 For OpenRouter: `TB_BASE_URL=https://openrouter.ai/api/v1 TB_API_KEY=$OPENROUTER_API_KEY node tb.ts ...` with models like `anthropic/...`.
+Each attempt times out after 180 s (`TB_TIMEOUT=<seconds>` to change it) and is retried like a network error.
 
 ## Included bites
 
