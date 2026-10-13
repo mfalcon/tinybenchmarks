@@ -22,11 +22,13 @@ cases:
     expected: {facings: 6}
 
   # "other" = 0 penalizes models that invent gaps for products that are fully stocked.
+  # The shelf is named by its products: counting shelves "from the top" is ambiguous in this perspective.
   - photo: 78-790f0fd8b9a421b8a717497478502850-1024-1024.webp
     question: |
-      On the third shelf from the top, count the empty facings (spots where product is missing).
-      - yellow_detergent: yellow bottle of lemon dish detergent (not the "Ala" sachets)
-      - blue_detergent: blue bottle of dish detergent
+      On the shelf with the large yellow "Ala" bottles and the blue "Magistral" bottles,
+      count the empty facings (spots where product is missing).
+      - yellow_detergent: large yellow "Ala" dish detergent bottle
+      - blue_detergent: blue "Magistral" dish detergent bottle
       - other: any other product
       Answer only JSON:
       {"missing_total": <number>, "missing": {"yellow_detergent": <number>, "blue_detergent": <number>, "other": <number>}}
