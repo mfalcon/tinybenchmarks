@@ -10,6 +10,7 @@ Requires Node ≥ 22.18 (runs TypeScript directly, no build step) and an OpenAI 
 npm install
 node tb.ts negotiation                         # uses the models listed in the YAML
 node tb.ts shelf --models gpt-4.1 --repeats 3
+node tb.ts shelf --models gpt-6-astra@low,gpt-6-astra@high   # @ sets reasoning_effort
 npm test && npm run typecheck
 ```
 
@@ -26,7 +27,7 @@ To force fresh calls, delete `.cache/` or raise `--repeats` (each new repeat is 
 ## Bite format
 
 ```yaml
-models: [gpt-4.1, gpt-5.6-sol]      # can be overridden with --models
+models: [gpt-4.1, gpt-6.1-sol@high] # can be overridden with --models; @level sets reasoning_effort
 prompt: |                           # {{field}} is replaced with each case's values
   ...{{text}}...
   Answer only JSON: {"label": "..."}

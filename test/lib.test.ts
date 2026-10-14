@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { absError, exact, loadBite, matchRate, normalize, parseJson, render, scoreCase, summarize, transcriptEntry, type Row } from "../lib.ts";
-import { buildPrompt, runBite, type Prompt } from "../tb.ts";
+import { buildPrompt, chatRequest, runBite, type Prompt } from "../tb.ts";
 
 const dir = mkdtempSync(join(tmpdir(), "tb-test-"));
 function biteFile(yaml: string): string {
@@ -165,4 +165,9 @@ test("review fixes: the table counts abs_error answers that had no number", asyn
   const table = summarize(bite, await runBite(bite, ["skipper", "tries"], 1, fake)).split("\n");
   assert.match(table[1], /^skipper\s+0\.00 \(1 unscored\)\s/);
   assert.match(table[2], /^tries\s+0\.50\s/);
+});
+
+test("model@effort sends reasoning_effort; a bare name doesn't", () => {
+  assert.deepEqual(chatRequest("gpt-6-astra@high", { text: "hi" }), { model: "gpt-6-astra", messages: [{ role: "user", content: "hi" }], reasoning_effort: "high" });
+  assert.deepEqual(chatRequest("gpt-4.1", { text: "hi" }), { model: "gpt-4.1", messages: [{ role: "user", content: "hi" }] });
 });

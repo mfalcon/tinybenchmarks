@@ -36,11 +36,18 @@ function messageContent(p: Prompt) {
   ];
 }
 
+// "gpt-6-astra@high" sends reasoning_effort: "high"; a bare name leaves the provider's default.
+export function chatRequest(model: string, prompt: Prompt) {
+  const [name, effort] = model.split("@");
+  const request = { model: name, messages: [{ role: "user", content: messageContent(prompt) }] };
+  return effort ? { ...request, reasoning_effort: effort } : request;
+}
+
 // Calls an OpenAI-compatible endpoint, with a disk cache and 3 attempts (only on network errors, timeouts,
 // malformed responses, 429 or 5xx). The timeout covers reading the body too.
 // The repeat number is part of the cache key: otherwise all N repeats would return the same response.
 export const chat: ChatFn = async (model, prompt, repeat) => {
-  const request = { model, messages: [{ role: "user", content: messageContent(prompt) }] };
+  const request = chatRequest(model, prompt);
   const key = createHash("sha256").update(JSON.stringify({ BASE_URL, body: request, repeat })).digest("hex");
   const file = join(ROOT, ".cache", `${key}.json`);
   if (existsSync(file)) {
